@@ -195,6 +195,13 @@ class MainActivity : ThemedActivity(),
         }
     }
 
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (TvHelper.handleKeyEvent(this, event)) {
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     fun refreshNavMenu(clashApi: Boolean) {
         if (::navigation.isInitialized) {
             navigation.menu.findItem(R.id.nav_traffic)?.isVisible = clashApi
