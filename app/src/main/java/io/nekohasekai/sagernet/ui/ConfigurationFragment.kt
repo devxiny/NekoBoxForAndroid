@@ -351,24 +351,7 @@ class ConfigurationFragment @JvmOverloads constructor(
 
             R.id.action_import_clipboard -> {
                 val text = SagerNet.getClipboardText()
-                if (text.isBlank()) {
-                    snackbar(getString(R.string.clipboard_empty)).show()
-                } else runOnDefaultDispatcher {
-                    try {
-                        val proxies = RawUpdater.parseRaw(text)
-                        if (proxies.isNullOrEmpty()) onMainDispatcher {
-                            snackbar(getString(R.string.no_proxies_found_in_clipboard)).show()
-                        } else import(proxies)
-                    } catch (e: SubscriptionFoundException) {
-                        (requireActivity() as MainActivity).importSubscription(e.link.toUri())
-                    } catch (e: Exception) {
-                        Logs.w(e)
-
-                        onMainDispatcher {
-                            snackbar(e.readableMessage).show()
-                        }
-                    }
-                }
+                import(text)
             }
 
             R.id.action_import_file -> {
@@ -592,6 +575,27 @@ class ConfigurationFragment @JvmOverloads constructor(
             }
         }
         return true
+    }
+
+    fun import(text: String) {
+        if (text.isBlank()) {
+            snackbar(getString(R.string.clipboard_empty)).show()
+        } else runOnDefaultDispatcher {
+            try {
+                val proxies = RawUpdater.parseRaw(text)
+                if (proxies.isNullOrEmpty()) onMainDispatcher {
+                    snackbar(getString(R.string.no_proxies_found_in_clipboard)).show()
+                } else import(proxies)
+            } catch (e: SubscriptionFoundException) {
+                (requireActivity() as MainActivity).importSubscription(e.link.toUri())
+            } catch (e: Exception) {
+                Logs.w(e)
+
+                onMainDispatcher {
+                    snackbar(e.readableMessage).show()
+                }
+            }
+        }
     }
 
     inner class TestDialog {

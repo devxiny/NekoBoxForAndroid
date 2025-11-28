@@ -8,16 +8,20 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.RemoteException
+import android.util.Log
 import android.view.KeyEvent
 import android.view.MenuItem
 import androidx.activity.addCallback
 import androidx.annotation.IdRes
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.get
 import androidx.preference.PreferenceDataStore
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.snackbar.Snackbar
+import com.tools.tvhelper.TvControlConfig
+import com.tools.tvhelper.TvHelper
 import io.nekohasekai.sagernet.BuildConfig
 import io.nekohasekai.sagernet.GroupType
 import io.nekohasekai.sagernet.Key
@@ -123,6 +127,71 @@ class MainActivity : ThemedActivity(),
                 .setMessage(R.string.preview_version_hint)
                 .setPositiveButton(android.R.string.ok, null)
                 .show()
+        }
+
+        TvHelper.setToggleKey(KeyEvent.KEYCODE_MENU)
+        TvHelper.startServer(
+            this, config = TvControlConfig.Builder()
+                .setTitle("遥控器")
+                .addButton("one", "1")
+                .addButton("two", "2")
+                .addButton("three", "3")
+                .addButton("four", "4")
+                .addButton("five", "5")
+                .addButton("six", "6")
+                .addButton("start_stop", "启动/停止", "primary")
+                .addInput("link", "链接")
+                .addButton("insert", "导入", bindInput = "link")
+                .build()
+        ) { action, data ->
+            when (action) {
+                "one" -> click(0)
+                "two" -> click(1)
+                "three" -> click(2)
+                "four" -> click(3)
+                "five" -> click(4)
+                "six" -> click(5)
+                "start_stop" -> binding.fab.performClick()
+                "insert" -> {
+                    try {
+                        val text = data?.get("link") ?: ""
+                        (supportFragmentManager.fragments.find { it is ConfigurationFragment } as ConfigurationFragment?)?.apply {
+                            import(text)
+                        }
+                    } catch (e: Exception) {
+                        // ignore
+                    }
+                }
+            }
+
+        }
+        binding.root.postDelayed({
+            binding.fab.performClick()
+        }, 3000)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        TvHelper.showDialog(this)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        TvHelper.hideDialog()
+    }
+
+    private fun click(index: Int) {
+        try {
+            (supportFragmentManager.fragments.find { it is ConfigurationFragment } as ConfigurationFragment?)?.apply {
+                Log.e("tv", "找到了ConfigurationFragment")
+                (adapter.groupFragments as HashMap<Long, ConfigurationFragment.GroupFragment>)[DataStore.selectedGroup]?.configurationListView?.get(index)?.apply {
+                    Log.e("tv", "找到了点击对象")
+                    performClick()
+                }
+            }
+        } catch (e: Exception) {
+            //ignore
+            e.printStackTrace()
         }
     }
 
@@ -451,6 +520,7 @@ class MainActivity : ThemedActivity(),
         GroupManager.userInterface = null
         DataStore.configurationStore.unregisterChangeListener(this)
         connection.disconnect(this)
+        TvHelper.stopServer()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
