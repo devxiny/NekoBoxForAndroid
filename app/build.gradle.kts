@@ -86,5 +86,5 @@ dependencies {
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
 
-    implementation("com.github.devxiny:tv-helper:1.0.1")
+    implementation("com.github.devxiny:tv-helper:1.0.2")
 }
