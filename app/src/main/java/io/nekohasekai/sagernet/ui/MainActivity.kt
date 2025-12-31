@@ -61,6 +61,7 @@ class MainActivity : ThemedActivity(),
 
     lateinit var binding: LayoutMainBinding
     lateinit var navigation: NavigationView
+    private var isFirstConnection = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -142,6 +143,10 @@ class MainActivity : ThemedActivity(),
                 .addButton("start_stop", "启动/停止", "primary")
                 .addInput("link", "链接")
                 .addButton("insert", "导入", bindInput = "link")
+                .addInput("proxy_apps", "应用包名（逗号分隔）")
+                .addButton("enable_proxy_apps", "开启分应用代理", "primary", bindInput = "proxy_apps")
+                .addButton("disable_proxy_apps", "关闭分应用代理", "primary")
+                .addButton("show_proxy_apps", "显示当前代理应用")
                 .build()
         ) { action, data ->
             when (action) {
@@ -162,12 +167,128 @@ class MainActivity : ThemedActivity(),
                         // ignore
                     }
                 }
+                "enable_proxy_apps" -> {
+                    try {
+                        val input = data?.get("proxy_apps")?.trim() ?: ""
+                        if (input.isEmpty()) {
+                            runOnUiThread {
+                                android.widget.Toast.makeText(
+                                    this,
+                                    "请输入应用包名",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                            return@startServer
+                        }
+
+                        // 将逗号分隔转换为换行符分隔
+                        val packageNames = input.split(",")
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+
+                        // 验证包名格式
+                        val invalidPackages = packageNames.filter { pkg ->
+                            !pkg.matches(Regex("^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$"))
+                        }
+
+                        if (invalidPackages.isNotEmpty()) {
+                            runOnUiThread {
+                                android.widget.Toast.makeText(
+                                    this,
+                                    "包名格式错误: ${invalidPackages.joinToString(", ")}",
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            return@startServer
+                        }
+
+                        // 保存配置
+                        DataStore.proxyApps = true
+                        DataStore.bypass = false
+                        DataStore.individual = packageNames.joinToString("\n")
+
+                        runOnUiThread {
+                            android.widget.Toast.makeText(
+                                this,
+                                "已开启分应用代理，共 ${packageNames.size} 个应用",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+
+                        // 如果服务正在运行，重载服务
+                        if (DataStore.serviceState.canStop) {
+                            SagerNet.reloadService()
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            android.widget.Toast.makeText(
+                                this,
+                                "操作失败: ${e.message}",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
+                "disable_proxy_apps" -> {
+                    try {
+                        DataStore.proxyApps = false
+
+                        runOnUiThread {
+                            android.widget.Toast.makeText(
+                                this,
+                                "已关闭分应用代理",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+
+                        // 如果服务正在运行，重载服务
+                        if (DataStore.serviceState.canStop) {
+                            SagerNet.reloadService()
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            android.widget.Toast.makeText(
+                                this,
+                                "操作失败: ${e.message}",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
+                "show_proxy_apps" -> {
+                    try {
+                        val isEnabled = DataStore.proxyApps
+                        val mode = if (DataStore.bypass) "绕过模式" else "代理模式"
+                        val apps = DataStore.individual.split('\n').filter { it.isNotBlank() }
+
+                        val message = if (!isEnabled) {
+                            "分应用代理已关闭"
+                        } else if (apps.isEmpty()) {
+                            "分应用代理已开启（$mode），但未配置应用"
+                        } else {
+                            "分应用代理已开启（$mode）\n共 ${apps.size} 个应用:\n${apps.joinToString("\n")}"
+                        }
+
+                        runOnUiThread {
+                            android.widget.Toast.makeText(
+                                this,
+                                message,
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            android.widget.Toast.makeText(
+                                this,
+                                "操作失败: ${e.message}",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
             }
 
         }
-        binding.root.postDelayed({
-            binding.fab.performClick()
-        }, 3000)
     }
 
     override fun onResume() {
@@ -459,13 +580,23 @@ class MainActivity : ThemedActivity(),
     }
 
     val connection = SagerConnection(SagerConnection.CONNECTION_ID_MAIN_ACTIVITY_FOREGROUND, true)
-    override fun onServiceConnected(service: ISagerNetService) = changeState(
-        try {
+    override fun onServiceConnected(service: ISagerNetService) {
+        val state = try {
             BaseService.State.values()[service.state]
         } catch (_: RemoteException) {
             BaseService.State.Idle
         }
-    )
+        
+        changeState(state)
+        
+        // 自动启动：只在首次连接且服务未运行时
+        if (state == BaseService.State.Idle && isFirstConnection) {
+            binding.root.post {
+                connect.launch(null)
+            }
+        }
+        isFirstConnection = false
+    }
 
     override fun onServiceDisconnected() = changeState(BaseService.State.Idle)
     override fun onBinderDied() {
@@ -524,6 +655,7 @@ class MainActivity : ThemedActivity(),
 
     override fun onDestroy() {
         super.onDestroy()
+        isFirstConnection = true  // 下次打开 app 时重新自动启动
         GroupManager.userInterface = null
         DataStore.configurationStore.unregisterChangeListener(this)
         connection.disconnect(this)
